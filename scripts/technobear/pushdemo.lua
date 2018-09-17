@@ -40,6 +40,8 @@ function init()
   end
   clk:start()
 
+  print("adsakfalkfa")
+  p2_button_state(dev,110,127)
 end
 
 function cleanup()
@@ -85,8 +87,7 @@ function redraw()
 end
 
 function pdraw(dev) 
-  for param_index = 0,params.count do
-    print(params:get_name(param_index))
+  for param_index = 1,params.count do
     p2_move(dev,param_index *100,30)
     p2_text(dev,params:get_name(param_index))
     p2_move(dev,param_index *100,50)
@@ -170,16 +171,22 @@ local function note_off(note, vel)
   midi_send(mididev,data)
 end
 
-local function cc(ccnum, val)
-  print("cc"..ccnum..":"..val)
-  if ccnum == 110 and val> 0 then
+
+function key(n,z)
+  print("key"..n..":"..z)
+  if n == 110 and z> 0 then
     mode = (mode + 1) % 3
     p2_clear(dev)
     p2_update(dev)
     print(params.count)
   end 
-
 end
+
+function enc(n,d)
+  print("enc"..n..":"..d)
+end
+
+
 
 
 local function midi_event(data)
@@ -191,8 +198,6 @@ local function midi_event(data)
     note_on(data[2], data[3])
   elseif status == 0x80 then
     note_off(data[2],data[3])
-  elseif status == 0xB0 then
-    cc(data[2], data[3])
   end
 end
 
@@ -201,7 +206,7 @@ local function initmidi(dev)
   local data = {0xB0,i+102,i}
     midi_send(dev,data)
   end
-  midi_send(dev, {0xB0,110,127})
+--  midi_send(dev, {0xB0,110,127})
 end
 
 midi.add = function(dev)
