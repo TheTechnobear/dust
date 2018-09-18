@@ -3,19 +3,16 @@
 
 engine.name = "SoftCut"
 
+
 local g = grid.connect()
+local push = 0
 
 local pattern_time = require 'pattern_time'
 
 local MAX_TRACKS = 6
-local MAX_PATTERNS = 4
+local MAX_PATTERNS = 8
 local MAX_CLIPS = 16
 local FADE = 0.01
-
-local vREC = 1
-local vCUT = 2
-local vCLIP = 3
-local vTIME = 15
 
 -- events
 local eCUT = 1
@@ -30,11 +27,13 @@ local quantize = 0
 local midi_device = midi.connect()
 local midiclocktimer
 
+local gridpage = 0 
+
 local function update_tempo()
   local t = params:get("tempo")
   local d = params:get("quant_div")
   local interval = (60/t) / d
-  print("q > "..interval)
+  -- print("q > "..interval)
   quantizer.time = interval
   for i=1,MAX_TRACKS do
     if tracks[i].tempo_map == 1 then
@@ -110,21 +109,15 @@ function event_exec(e)
     --print(">>>> "..lstart.." "..lend)
     engine.loop_start(e.i,lstart)
     engine.loop_end(e.i,lend)
-    if view == vCUT then dirtygrid=true end
+    dirtygrid=true
   elseif e.t==eSPEED then
     track.speed = e.speed
     update_rate(e.i)
-    --n = math.pow(2,track.speed + params:get("speed_mod"..e.i))
-    --if track.rev == 1 then n = -n end
-    --engine.rate(e.i,n)
-    if view == vREC then dirtygrid=true end
+    dirtygrid=true
   elseif e.t==eREV then
     track.rev = e.rev
     update_rate(e.i)
-    --n = math.pow(2,track.speed + params:get("speed_mod"..e.i))
-    --if track.rev == 1 then n = -n end
-    --engine.rate(e.i,n)
-    if view == vREC then dirtygrid=true end
+    dirtygrid=true
   end
 end
 
@@ -136,21 +129,6 @@ for i=1,MAX_PATTERNS do
   patterns[i] = pattern_time.new()
   patterns[i].process = event_exec
 end
-
-view = vREC
-view_prev = view
-
-v = {}
-v.key = {}
-v.enc = {}
-v.redraw = {}
-v.gridkey = {}
-v.gridredraw = {}
-
-viewinfo = {}
-viewinfo[vREC] = 1
-viewinfo[vCUT] = 0
-viewinfo[vTIME] = 0
 
 focus = 1
 alt = 0
@@ -181,7 +159,7 @@ set_clip_length = function(i, len)
   local bpm = 60 / len
   while bpm < 60 do
     bpm = bpm * 2
-    print("bpm > "..bpm)
+    -- print("bpm > "..bpm)
   end
   clips[i].bpm = bpm
 end
@@ -203,7 +181,7 @@ end
 
 calc_quant = function(i)
   local q = (clips[tracks[i].clip].l/16)
-  print("q > "..q)
+  -- print("q > "..q)
   return q
 end
 
@@ -215,7 +193,7 @@ calc_quant_off = function(i, q)
     off = off + q
   end
   off = off - clip.s
-  print("off > "..off)
+  -- print("off > "..off)
   return off
 end
 
@@ -257,38 +235,6 @@ for i = 1,8 do
   first[i] = 0
   second[i] = 0
 end
-
-
-key = function(n,z) _key(n,z) end
-enc = function(n,d)
-  if n==1 then mix:delta("output",d)
-  else _enc(n,d) end
-end
-redraw = function() _redraw() end
-g.event = function(x,y,z) _gridkey(x,y,z) end
-
-set_view = function(x)
-  --print("set view: "..x)
-  if x == -1 then x = view_prev end
-  view_prev = view
-  view = x
-  _key = v.key[x]
-  _enc = v.enc[x]
-  _redraw = v.redraw[x]
-  _gridkey = v.gridkey[x]
-  _gridredraw = v.gridredraw[x]
-  redraw()
-  dirtygrid=true
-end
-
-gridredraw = function()
-  if not g then return end
-  if dirtygrid == true then
-    _gridredraw()
-    dirtygrid = false
-  end
-end
-
 
 
 UP1 = controlspec.new(0, 1, 'lin', 0, 1, "")
@@ -365,7 +311,7 @@ init = function()
   quantizer.callback = event_q_clock
   quantizer:start()
   --pattern_init()
-  set_view(vREC)
+
 
   midiclocktimer = metro.alloc()
   midiclocktimer.count = -1
@@ -378,7 +324,41 @@ init = function()
   gridredrawtimer = metro.alloc(function() gridredraw() end, 0.02, -1)
   gridredrawtimer:start()
   dirtygrid = true
+
+  for i = 0, 10 do 
+    if push2.devices[i] ~= nil then 
+      push = push2.devices[i].dev
+    end
+  end
+
+  if push == nil then
+   return
+  end
+
+  -- setup grid lights
+  for i = 1,MAX_PATTERNS do -- device keys
+      p2_button_state(push,i+102-1,0)
+  end
+  for i = 1,MAX_TRACKS +2  do -- track keys
+      p2_button_state(push,i+20-1,0)
+  end
+  p2_button_state(push,116, 127) -- quantize
+  p2_button_state(push,118, 127) -- delete
+  p2_button_state(push,85,10) -- play
+  p2_button_state(push,86, 127) -- rec
+  p2_button_state(push,62, 0) -- page-
+  p2_button_state(push,63, 127) -- page+
+
+end -- init()
+
+-- cleanup
+function cleanup()
+  for i=1,MAX_PATTERNS do
+    patterns[i]:stop()
+    patterns[i] = nil
+  end
 end
+
 
 -- poll callback
 phase = function(n, x)
@@ -391,7 +371,7 @@ phase = function(n, x)
   x = math.floor(pp * 16)
   if x ~= track.pos_grid then
     track.pos_grid = x
-    if view == vCUT then dirtygrid=true end
+    dirtygrid=true
   end
 end
 
@@ -408,448 +388,257 @@ update_rate = function(i)
     n = n * bpmmod
   end
   engine.rate(i,n)
-  if view == vREC then redraw() end
+  redraw()
 end
 
+local delkeyheld = false
+local playkeyheld = false
+local reckeyheld = false
 
 
-gridkey_nav = function(x,z)
-  if z==1 then
-    if x==1 then
-      if alt == 1 then engine.clear() end
-      set_view(vREC)
-    elseif x==2 then set_view(vCUT)
-    elseif x==3 then set_view(vCLIP)
-    elseif x>4 and x <9 then
-      i = x - 4
-      local pattern = patterns[i]
-      if alt == 1 then
-        pattern:rec_stop()
-        pattern:stop()
-        pattern:clear()
-      elseif patterns[i].rec == 1 then
-        pattern:rec_stop()
-        pattern:start()
-      elseif pattern.count == 0 then
-        pattern:rec_start()
-      elseif pattern.play == 1 then
-        pattern:stop()
-      else pattern:start()
+function key(n,z)
+  if z>0 and n>=102 and n <102+MAX_PATTERNS then -- device keys
+    local pattern = patterns[n-102+1];
+    if delkeyheld == 1 then
+      pattern:rec_stop()
+      pattern:stop()
+      pattern:clear()
+    elseif pattern.rec == 1 then
+      pattern:rec_stop()
+      pattern:start()
+    elseif pattern.count == 0 then
+      pattern:rec_start()
+    elseif pattern.play == 1 then
+      pattern:stop()
+    else 
+      pattern:start()
+    end
+  elseif z>0 and n>=20 and n <20+MAX_TRACKS then -- track keys
+    local nfocus = (n - 20) + 1
+    if nfocus==focus and not reckeyheld and not playkeyheld  then
+      -- toggle play/record
+      local track = tracks[focus]
+      if track.play == 1 then
+        -- print("toogle play "..track.play)
+        e = {}
+        e.t = eSTOP
+        e.i = focus
+        event(e)
+      elseif track.rec == 1 then
+        -- print("toogle rec "..track.rec)
+        track.rec = 1 - track.rec
+        set_rec(focus)
       end
-    elseif x==15 and alt == 0 then
+    else
+      focus = nfocus
+      local track = tracks[focus] 
+      if playkeyheld then
+        if track.play == 1 then
+          e = {}
+          e.t = eSTOP
+          e.i = focus
+          event(e)
+        else 
+          e = {}
+          e.t = eSTART
+          e.i = focus
+          event(e)
+        end
+      end
+      if reckeyheld then 
+        track.rec = 1 - track.rec
+        -- print("REC "..track.rec)
+        set_rec(focus)
+      end
+    end
+  elseif n==116 then
       quantize = 1 - quantize
       if quantize == 0 then quantizer:stop()
       else quantizer:start()
       end
-    elseif x==15 and alt == 1 then
-      set_view(vTIME)
-    elseif x==16 then alt = 1
+  elseif n==85 then --play 
+      playkeyheld = z>0     
+  elseif n==86 then --rec 
+      reckeyheld = z>0     
+  elseif n==118 then --delete 
+      delkeyheld = z>0     
+  elseif n==62 then --page-
+    if gridpage > 0 then
+      gridpage = gridpage - 1
+      p2_button_state(push,62,gridpage > 0 and 127 or 0)
+      p2_button_state(push,63,gridpage < 1 and 127 or 0)
+    end 
+  elseif n==63 then --page+ 
+    if gridpage < 1 then
+      gridpage = gridpage + 1
+      p2_button_state(push,62,gridpage > 0 and 127 or 0)
+      p2_button_state(push,63,gridpage < 1 and 127 or 0)
+    end 
+  elseif n==60 then --mute clip 
+  elseif n==61 then --solo clip 
+  elseif n==29 then --stop clip
+  end 
+  redraw()
+end
+
+function enc(n,d)
+  if n==1 then 
+      params:delta(focus.."vol",d)
+  elseif n==2 then
+      params:delta(focus.."speed_mod",d)
+  elseif n== 3 then
+      params:delta(focus.."rec",d)
+  elseif n == 4 then 
+      params:delta(focus.."pre",d)
+  elseif n == 5 then 
+      params:delta("midi_sync",d)
+  elseif n == 6 then
+      params:delta("tempo",d)
+  elseif n == 7 then
+      params:delta("quant_div",d)
+  elseif n == 8 then
+      mix:delta("output",d)
+  end 
+  redraw()
+end
+
+function dispPattern(pi, title)
+    p2_colour(push, 0.5,1.0, 0.5)
+    p2_move(push,5 + (pi-1) * 125 ,20)
+    p2_text(push,title)
+end
+
+function dispTrack(pi, title)
+    if pi==focus then 
+      p2_colour(push, 1.0,1.0, 1.0)
+    else 
+      p2_colour(push, 0.5,1.0, 0.7)
+    end
+    p2_move(push,5 + (pi-1) * 125 ,150)
+    p2_text(push,title)
+end
+
+function dispParam(pi,title, param) 
+    p2_colour(push, 0.5,0.5, 1)
+    p2_move(push,5 + (pi-1) * 125 ,45)
+    p2_text(push,title)
+    -- value 
+    p2_colour(push, 1, 1, 1)
+    p2_move(push,5 +(pi-1) * 125,65)
+    p2_text(push,param)
+end
+
+
+
+function redraw()
+  local pname = {"vol", "speed_mod", "rec", "pre"}
+  p2_clear(push)
+  p2_font_face(push,5)
+  p2_font_size(push,12)
+  for i = 1, MAX_PATTERNS do
+    dispPattern(i,"Pattern "..i)
+  end
+
+  p2_font_size(push,20)
+  for i,v in ipairs(pname) do
+    dispParam(i, v, params:string(focus..v))
+  end
+  dispParam(5,"midi_sync", params:string("midi_sync"))
+  dispParam(6,"tempo", params:string("tempo"))
+  dispParam(7,"quant_div", params:string("quant_div"))
+  dispParam(8,"output", mix:string("output"))
+
+  p2_font_size(push,12)
+  for i = 1, MAX_TRACKS do
+    dispTrack(i,"Track "..i)
+  end
+
+
+
+  p2_update(push);
+
+  --buttons states
+  for i = 1, MAX_PATTERNS do -- device
+    local pattern = patterns[i]
+    local clr = pattern.rec==1 and 64 or (pattern.count == 0 and 10 or (pattern.play == 1 and 127 or 1 ));
+    -- print("p = "..i.." , "..clr.." rec "..pattern.rec)
+    p2_button_state(push, i+102-1, clr)
+  end
+  for i = 1, MAX_TRACKS do -- track
+    local track = tracks[i]
+    local clrstate = {0, 32, 80,1,33, 127}
+    local clridx = (track.play==1 and 2 or (track.rec== 1 and 3 or 1)) + (focus == i and 1 or 0) * 3 ;
+    p2_button_state(push, i+20-1, clrstate[clridx])
+  end
+end
+
+
+g.event = function(x, y, z)
+  local i = math.floor((y-1) / 2) + (gridpage * 4)  + 1
+
+  if i>MAX_TRACKS then return end
+
+  local pos = ((x-1) % 8) + (((y-1) % 2) * 8) + 1;
+  if z==1 and held[i] then heldmax[i] = 0 end
+  held[i] = held[i] + (z*2-1)
+  if held[i] > heldmax[i] then heldmax[i] = held[i] end
+  --print(held[i])
+
+  if z == 1 then
+    if focus ~= i then
+      focus = i
+      redraw()
+    end
+    if alt == 1 and i<=MAX_TRACKS then
+      if tracks[i].play == 1 then
+        e = {} e.t = eSTOP e.i = i
+      else
+        e = {} e.t = eSTART e.i = i
+      end
+      event(e)
+    elseif i<=MAX_TRACKS and held[i]==1 then
+      first[i] = pos
+      local cut = pos-1
+      --print("pos > "..cut)
+      e = {} e.t = eCUT e.i = i e.pos = cut
+      event(e)
+    elseif i<=MAX_TRACKS and held[i]==2 then
+      second[i] = pos
     end
   elseif z==0 then
-    if x==16 then alt = 0 end
-    if x==15 and view == vTIME then set_view(-1) end
-  end
-  dirtygrid=true
-end
-
-gridredraw_nav = function()
-  -- indicate view
-  g.led(view,1,15)
-  if alt==1 then g.led(16,1,9) end
-  if quantize==1 then g.led(15,1,9) end
-  for i=1,4 do
-    local pattern = patterns[i]
-    if pattern.rec == 1 then g.led(i+4,1,15)
-    elseif pattern.play == 1 then g.led(i+4,1,9)
-    elseif pattern.count > 0 then g.led(i+4,1,5)
-    else g.led(i+4,1,3) end
-  end
-end
-
--------------------- REC
-v.key[vREC] = function(n,z)
-  if n==2 and z==1 then
-    viewinfo[vREC] = 1 - viewinfo[vREC]
-    redraw()
-  end
-end
-
-v.enc[vREC] = function(n,d)
-  if viewinfo[vREC] == 0 then
-    if n==2 then
-      params:delta(focus.."vol",d)
-    elseif n==3 then
-      params:delta(focus.."speed_mod",d)
-    end
-  else
-    if n==2 then
-      params:delta(focus.."rec",d)
-    elseif n==3 then
-      params:delta(focus.."pre",d)
-    end
-  end
-  redraw()
-end
-
-v.redraw[vREC] = function()
-  screen.clear()
-  screen.level(15)
-  screen.move(10,16)
-  screen.text("REC > "..focus)
-  local sel = viewinfo[vREC] == 0
-
-  screen.level(sel and 15 or 4)
-  screen.move(10,32)
-  screen.text(params:string(focus.."vol"))
-  screen.move(70,32)
-  screen.text(params:string(focus.."speed_mod"))
-  screen.level(3)
-  screen.move(10,40)
-  screen.text("volume")
-  screen.move(70,40)
-  screen.text("speed mod")
-
-  screen.level(not sel and 15 or 4)
-  screen.move(10,52)
-  screen.text(params:string(focus.."rec"))
-  screen.move(70,52)
-  screen.text(params:string(focus.."pre"))
-  screen.level(3)
-  screen.move(10,60)
-  screen.text("rec level")
-  screen.move(70,60)
-  screen.text("overdub")
-
-  screen.update()
-end
-
-v.gridkey[vREC] = function(x, y, z)
-  if y == 1 then gridkey_nav(x,z)
-  else
-    if z == 1 then
-      local track = tracks[i]
-      i = y-1
-      if x>2 and x<8 then
-        if alt == 1 then
-          track.tempo_map = 1 - track.tempo_map
-          update_rate(i)
-        elseif focus ~= i then
-          focus = i
-          redraw()
-        end
-      elseif x==1 and y<MAX_TRACKS+2 then
-        track.rec = 1 - track.rec
-        print("REC "..track.rec)
-        set_rec(i)
-      elseif x==16 and y<MAX_TRACKS+2 then
-        if track.play == 1 then
-          e = {}
-          e.t = eSTOP
-          e.i = i
-          event(e)
-        else
-          e = {}
-          e.t = eSTART
-          e.i = i
-          event(e)
-        end
-      elseif x>8 and x<16 and y<MAX_TRACKS+2 then
-        local n = x-12
-        e = {} e.t = eSPEED e.i = i e.speed = n
-        event(e)
-      elseif x==8 and y<MAX_TRACKS+2 then
-        local n = 1 - track.rev
-        e = {} e.t = eREV e.i = i e.rev = n
-        event(e)
-      end
-      dirtygrid=true
+    if y<=MAX_TRACKS+2 and held[i] == 1 and heldmax[i]==2 then
+      e = {}
+      e.t = eLOOP
+      e.i = i
+      e.loop = 1
+      e.loop_start = math.min(first[i],second[i])
+      e.loop_end = math.max(first[i],second[i])
+      event(e)
     end
   end
 end
 
-v.gridredraw[vREC] = function()
+
+
+function gridredraw()
   g.all(0)
-  g.led(3,focus+1,7)
-  g.led(4,focus+1,7)
-  for i=1,MAX_TRACKS do
-    local y = i+1
-    local track = tracks[i]
-    g.led(1,y,3)--rec
-    if track.rec == 1 then g.led(1,y,9) end
-    if track.tempo_map == 1 then g.led(5,y,7) end -- tempo.map
-    g.led(8,y,3)--rev
-    g.led(16,y,3)--stop
-    g.led(12,y,3)--speed=1
-    g.led(12+tracks[i].speed,y,9)
-    if track.rev == 1 then g.led(8,y,7) end
-    if track.play == 1 then g.led(16,y,15) end
-  end
-  gridredraw_nav()
-  g.refresh();
-end
+  local s = gridpage * 4 + 1 
+  local e = s + 3
+  if e > MAX_TRACKS then e = MAX_TRACKS end
 
---------------------CUT
-v.key[vCUT] = function(n,z)
-  print("CUT key")
-end
-
-v.enc[vCUT] = function(n,d)
-  if n==2 then
-    params:delta(focus.."vol",d)
-  end
-  redraw()
-end
-
-v.redraw[vCUT] = function()
-  screen.clear()
-  screen.level(15)
-  screen.move(10,16)
-  screen.text("CUT > "..focus)
-  if viewinfo[vCUT] == 0 then
-    screen.move(10,32)
-    screen.text(params:string(focus.."vol"))
-    --screen.move(70,50)
-    --screen.text(params:get("loop_mod"..focus))
-    screen.level(3)
-    screen.move(10,40)
-    screen.text("volume")
-    --screen.move(70,60)
-    --screen.text("speed mod")
-  else
-    screen.move(10,50)
-    screen.text(params:get(focus.."rec"))
-    screen.move(70,50)
-    screen.text(params:get(focus.."pre"))
-    screen.level(3)
-    screen.move(10,60)
-    screen.text("rec level")
-    screen.move(70,60)
-    screen.text("overdub")
-  end
-  screen.update()
-end
-
-v.gridkey[vCUT] = function(x, y, z)
-  if z==1 and held[y] then heldmax[y] = 0 end
-  held[y] = held[y] + (z*2-1)
-  if held[y] > heldmax[y] then heldmax[y] = held[y] end
-  --print(held[y])
-
-  if y == 1 then gridkey_nav(x,z)
-  else
-    i = y-1
-    if z == 1 then
-      if focus ~= i then
-        focus = i
-        redraw()
-      end
-      if alt == 1 and y<MAX_TRACKS+2 then
-        if tracks[i].play == 1 then
-          e = {} e.t = eSTOP e.i = i
-        else
-          e = {} e.t = eSTART e.i = i
-        end
-        event(e)
-      elseif y<MAX_TRACKS+2 and held[y]==1 then
-        first[y] = x
-        local cut = x-1
-        --print("pos > "..cut)
-        e = {} e.t = eCUT e.i = i e.pos = cut
-        event(e)
-      elseif y<MAX_TRACKS+2 and held[y]==2 then
-        second[y] = x
-      end
-    elseif z==0 then
-      if y<MAX_TRACKS+2 and held[y] == 1 and heldmax[y]==2 then
-        e = {}
-        e.t = eLOOP
-        e.i = i
-        e.loop = 1
-        e.loop_start = math.min(first[y],second[y])
-        e.loop_end = math.max(first[y],second[y])
-        event(e)
-      end
-    end
-  end
-end
-
-v.gridredraw[vCUT] = function()
-  g.all(0)
-  gridredraw_nav()
-  for i=1,MAX_TRACKS do
+  -- print( "track "..s.." "..e)
+  for i = s  , e do
     local track = tracks[i]
     if track.loop == 1 then
       for x=track.loop_start,track.loop_end do
-        g.led(x,i+1,4)
+      local pos = x -1
+      g.led( (pos%8) + 1 ,(((i-1) % 4) * 2) + math.floor(pos/8) + 1, i)
       end
     end
     if track.play == 1 then
-      g.led((track.pos_grid+1)%16, i+1, 15)
+      local pos = track.pos_grid;
+      g.led( (pos%8) + 1 ,(((i-1) % 4) * 2) + math.floor(pos/8) + 1, 15)
     end
   end
   g:refresh();
-end
-
-
-
---------------------CLIP
-
-clip_sel = 1
-clip_clear_mult = 3
-
-function fileselect_callback(path)
-  if path ~= "cancel" then
-    if path:find(".aif") or path:find(".wav") then
-      local track = tracks[clip_sel]
-      local clip = clips[track.clip]
-
-      print("file > "..path.." "..clip.s)
-      engine.read(path, clip.s, 16) -- FIXME 16 seconds to load
-      local ch, len = sound_file_inspect(path)
-      print("file length > "..len)
-      set_clip_length(track.clip, len/48000)
-      clip.name = path:match("[^/]*$")
-      set_clip(clip_sel,track.clip)
-      update_rate(clip_sel)
-    else
-      print("not a sound file")
-    end
-
-    -- TODO re-set_clip any tracks with this clip loaded
-    redraw()
-  end
-end
-
-v.key[vCLIP] = function(n,z)
-  if n==2 and z==0 then
-    fileselect.enter(os.getenv("HOME").."/dust/audio", fileselect_callback)
-  elseif n==3 and z==1 then
-    local track = tracks[clip_sel]
-    clip_reset(clip_sel,60/params:get("tempo")*(2^(clip_clear_mult-2)))
-    set_clip(clip_sel,track.clip)
-    update_rate(clip_sel)
-  end
-end
-
-v.enc[vCLIP] = function(n,d)
-  if n==2 then
-    clip_sel = util.clamp(clip_sel-d,1,MAX_TRACKS)
-  elseif n==3 then
-    clip_clear_mult = util.clamp(clip_clear_mult+d,1,6)
-  end
-  redraw()
-  dirtygrid=true
-end
-
-local function truncateMiddle (str, maxLength, separator)
-  maxLength = maxLength or 30
-  separator = separator or "..."
-
-  if (maxLength < 1) then return str end
-  if (string.len(str) <= maxLength) then return str end
-  if (maxLength == 1) then return string.sub(str, 1, 1) .. separator end
-
-  midpoint = math.ceil(string.len(str) / 2)
-  toremove = string.len(str) - maxLength
-  lstrip = math.ceil(toremove / 2)
-  rstrip = toremove - lstrip
-
-  return string.sub(str, 1, midpoint - lstrip) .. separator .. string.sub(str, 1 + midpoint + rstrip)
-end
-
-v.redraw[vCLIP] = function()
-  local track = tracks[clip_sel]
-  local clip = clips[track.clip]
-
-  screen.clear()
-  screen.level(15)
-  screen.move(10,30)
-  screen.text("CLIP > "..clip_sel)
-
-  screen.move(10,50)
-  screen.text(truncateMiddle(clip.name, 18))
-  screen.level(3)
-  screen.move(10,60)
-  screen.text("name "..track.clip)
-
-  screen.move(100,50)
-  screen.text(2^(clip_clear_mult-2))
-  screen.level(3)
-  screen.move(100,60)
-  screen.text("resize")
-
-  screen.update()
-end
-
-v.gridkey[vCLIP] = function(x, y, z)
-  if y == 1 then gridkey_nav(x,z)
-  elseif z == 1 and y < MAX_TRACKS+2 then
-    clip_sel = y-1
-    set_clip(clip_sel,x)
-    redraw()
-    dirtygrid=true
-  end
-end
-
-v.gridredraw[vCLIP] = function()
-  g.all(0)
-  gridredraw_nav()
-  for i=1,16 do g.led(i,clip_sel+1,4) end
-  for i=1,MAX_TRACKS do g.led(tracks[i].clip,i+1,10) end
-  g:refresh();
-end
-
-
-
-
---------------------TIME
-v.key[vTIME] = function(n,z)
-  print("TIME key")
-end
-
-v.enc[vTIME] = function(n,d)
-  if n==2 then
-    params:delta("tempo",d)
-  elseif n==3 then
-    params:delta("quant_div",d)
-  end
-  redraw()
-end
-
-v.redraw[vTIME] = function()
-  screen.clear()
-  screen.level(15)
-  screen.move(10,30)
-  screen.text("TIME")
-  if viewinfo[vTIME] == 0 then
-    screen.move(10,50)
-    screen.text(params:get("tempo"))
-    screen.move(70,50)
-    screen.text(params:get("quant_div"))
-    screen.level(3)
-    screen.move(10,60)
-    screen.text("tempo")
-    screen.move(70,60)
-    screen.text("quant div")
-  end
-  screen.update()
-end
-
-v.gridkey[vTIME] = function(x, y, z)
-  if y == 1 then gridkey_nav(x,z) end
-end
-
-v.gridredraw[vTIME] = function()
-  g.all(0)
-  gridredraw_nav()
-  g:refresh();
-end
-
-
-
-function cleanup()
-  for i=1,MAX_PATTERNS do
-    patterns[i]:stop()
-    patterns[i] = nil
-  end
 end
