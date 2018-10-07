@@ -16,14 +16,14 @@ local mode = 0
 function init()
   engine.amp(0)
 
-  params:add_number("tempo",20,240,48)
-  params:add_number("pw",0,1,1)
-  params:add_number("cutoff",1,20000,500)
-  params:add_number("res",0,100,48)
-  params:add_number("attack",0,100,0)
-  params:add_number("decay",0,100,25)
-  params:add_number("sustain",0,100,100)
-  params:add_number("release",0,100,25)
+  params:add_number("tempo","tempo",20,240,48)
+  params:add_number("pw","pw",0,1,1)
+  params:add_number("cutoff","cutoff",1,20000,500)
+  params:add_number("res","res",0,100,48)
+  params:add_number("attack","attack",0,100,0)
+  params:add_number("decay","decay",0,100,25)
+  params:add_number("sustain","sustain",0,100,100)
+  params:add_number("release","release",0,100,25)
     -- dev = push2.devices[2].dev
   for i = 0, 10 do 
     if push2.devices[i] ~= nil then 
