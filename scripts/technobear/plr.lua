@@ -342,7 +342,7 @@ init = function()
   for i = 1,MAX_TRACKS +2  do -- track keys
       p2_button_state(push,i+20-1,0)
   end
-  p2_button_state(push,116, 127) -- quantize
+  p2_button_state(push,116,quantize == 1 and 127 or 16)
   p2_button_state(push,118, 127) -- delete
   p2_button_state(push,85,10) -- play
   p2_button_state(push,86, 127) -- rec
@@ -451,24 +451,25 @@ function key(n,z)
         set_rec(focus)
       end
     end
-  elseif n==116 then
+  elseif n==116 and z > 0 then
       quantize = 1 - quantize
       if quantize == 0 then quantizer:stop()
       else quantizer:start()
       end
+      p2_button_state(push,116,quantize == 1 and 127 or 16)
   elseif n==85 then --play 
-      playkeyheld = z>0     
+      playkeyheld = z > 0     
   elseif n==86 then --rec 
-      reckeyheld = z>0     
+      reckeyheld = z > 0     
   elseif n==118 then --delete 
-      delkeyheld = z>0     
-  elseif n==62 then --page-
+      delkeyheld = z > 0     
+  elseif n==62 and z > 0 then --page-
     if gridpage > 0 then
       gridpage = gridpage - 1
       p2_button_state(push,62,gridpage > 0 and 127 or 0)
       p2_button_state(push,63,gridpage < 1 and 127 or 0)
     end 
-  elseif n==63 then --page+ 
+  elseif n==63 and z > 0 then --page+ 
     if gridpage < 1 then
       gridpage = gridpage + 1
       p2_button_state(push,62,gridpage > 0 and 127 or 0)
@@ -504,7 +505,7 @@ end
 
 function dispPattern(pi, title)
     p2_colour(push, 0.5,1.0, 0.5)
-    p2_move(push,5 + (pi-1) * 125 ,20)
+    p2_move(push,15 + (pi-1) * 121 ,20)
     p2_text(push,title)
 end
 
@@ -514,17 +515,17 @@ function dispTrack(pi, title)
     else 
       p2_colour(push, 0.5,1.0, 0.7)
     end
-    p2_move(push,5 + (pi-1) * 125 ,150)
+    p2_move(push,15 + (pi-1) * 121 ,150)
     p2_text(push,title)
 end
 
 function dispParam(pi,title, param) 
     p2_colour(push, 0.5,0.5, 1)
-    p2_move(push,5 + (pi-1) * 125 ,45)
+    p2_move(push,15 + (pi-1) * 121 ,45)
     p2_text(push,title)
     -- value 
     p2_colour(push, 1, 1, 1)
-    p2_move(push,5 +(pi-1) * 125,65)
+    p2_move(push,15 +(pi-1) * 121,65)
     p2_text(push,param)
 end
 
@@ -635,9 +636,10 @@ function gridredraw()
       g.led( (pos%8) + 1 ,(((i-1) % 4) * 2) + math.floor(pos/8) + 1, i)
       end
     end
-    if track.play == 1 then
+    if track.play == 1 and track.pos_grid >=0 then
       local pos = track.pos_grid;
       g.led( (pos%8) + 1 ,(((i-1) % 4) * 2) + math.floor(pos/8) + 1, 15)
+      -- print ( pos.."x "..(pos%8) + 1 .. " y " ..(((i-1) % 4) * 2) + math.floor(pos/8) + 1, 15)
     end
   end
   g:refresh();
